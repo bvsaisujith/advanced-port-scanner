@@ -18,7 +18,7 @@ The product is a local desktop application written in Python. It will use asynch
 - Python 3.x is available
 - The required packages in `requirements.txt` are installed
 - Network targets are authorized for scanning
-- PDF generation can be handled by a library such as WeasyPrint
+- PDF generation can be handled by a pure-Python library such as ReportLab
 
 ## 6. System Features
 ### 6.1 Target Entry
@@ -52,7 +52,7 @@ The system shall keep the current scan results in memory for reuse by the UI and
 ### 7.2 Software Interfaces
 - Python standard library networking and threading/asyncio support
 - PDF generation library
-- Optional HTML-to-PDF rendering path if WeasyPrint is used
+- PDF export path using ReportLab canvas generation
 
 ## 8. Non-Functional Requirements
 ### 8.1 Performance
