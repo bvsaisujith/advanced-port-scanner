@@ -59,6 +59,7 @@ def build_summary_text(session: ScanSession) -> str:
         f"Ports scanned: {len(session.ports)}",
         *dns_lines,
         *_traceroute_lines(session),
+        "Scan status: stopped early" if session.stopped else "Scan status: completed",
         f"Open ports: {len(sections.open_ports)}",
         f"Ports with banner: {len(sections.banner_ports)}",
         f"Closed ports: {len(sections.closed_ports)}",

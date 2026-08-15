@@ -24,6 +24,8 @@ class PortScannerApp:
         self.current_dns_resolution = None
         self.expected_results = 0
         self.result_trees: dict[str, ttk.Treeview] = {}
+        self.scan_stop_event = threading.Event()
+        self.scan_thread: threading.Thread | None = None
 
         self._build_ui()
 
@@ -58,6 +60,9 @@ class PortScannerApp:
 
         self.scan_button = ttk.Button(actions, text="Start Scan", command=self.start_scan)
         self.scan_button.pack(side="left")
+
+        self.stop_button = ttk.Button(actions, text="Stop Scan", command=self.stop_scan, state="disabled")
+        self.stop_button.pack(side="left", padx=(8, 0))
 
         self.demo_button = ttk.Button(actions, text="Quick Localhost Demo", command=self.quick_localhost_demo)
         self.demo_button.pack(side="left", padx=(8, 0))
@@ -126,8 +131,10 @@ class PortScannerApp:
             return
 
         self.scan_button.configure(state="disabled")
+        self.stop_button.configure(state="normal")
         self.demo_button.configure(state="disabled")
         self.export_button.configure(state="disabled")
+        self.scan_stop_event.clear()
         self.expected_results = len(ports)
         self.progress_var.set(0)
         self.progress_bar.configure(maximum=max(1, self.expected_results))
@@ -136,8 +143,15 @@ class PortScannerApp:
         self.current_dns_resolution = resolve_target(target)
         self._update_summary_preview(target)
 
-        thread = threading.Thread(target=self._run_scan, args=(target, ports), daemon=True)
-        thread.start()
+        self.scan_thread = threading.Thread(target=self._run_scan, args=(target, ports), daemon=True)
+        self.scan_thread.start()
+
+    def stop_scan(self) -> None:
+        if self.scan_thread is None:
+            return
+        self.scan_stop_event.set()
+        self.stop_button.configure(state="disabled")
+        self.status_var.set("Stopping scan...")
 
     def _run_scan(self, target: str, ports: list[int]) -> None:
         session = self.scanner.scan(
@@ -146,6 +160,7 @@ class PortScannerApp:
             progress_callback=self._on_progress,
             dns_resolution=self.current_dns_resolution,
             traceroute=self.traceroute_var.get(),
+            stop_event=self.scan_stop_event,
         )
         self.latest_session = session
         self.root.after(0, lambda: self._show_session(session))
@@ -162,12 +177,18 @@ class PortScannerApp:
         self._update_summary(session)
         summary_line = build_summary_text(session)
         self._populate_results(session)
+        if session.stopped:
+            status_text = "Stopped"
+        else:
+            status_text = "Done"
         self.status_var.set(
-            f"Done - {len(session.open_ports)} open ports, {len(session.banner_ports)} banners, {len(session.closed_ports)} closed"
+            f"{status_text} - {len(session.open_ports)} open ports, {len(session.banner_ports)} banners, {len(session.closed_ports)} closed"
         )
         self.scan_button.configure(state="normal")
+        self.stop_button.configure(state="disabled")
         self.demo_button.configure(state="normal")
         self.export_button.configure(state="normal")
+        self.scan_thread = None
         self.progress_var.set(self.expected_results)
         print(summary_line)
         for result in session.results:

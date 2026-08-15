@@ -32,6 +32,7 @@ class ScanSession:
     traceroute_output: str | None = None
     traceroute_error: str | None = None
     traceroute_time_ms: float | None = None
+    stopped: bool = False
     started_at: datetime = field(default_factory=datetime.now)
     finished_at: datetime | None = None
     results: list[PortScanResult] = field(default_factory=list)

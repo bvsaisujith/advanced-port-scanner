@@ -6,6 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from collections.abc import Callable
+from threading import Event
 from itertools import islice
 
 from src.models.scan_result import PortScanResult, ScanSession
@@ -48,6 +49,7 @@ class PortScanner:
         progress_callback: Callable[[int, int, PortScanResult], None] | None = None,
         dns_resolution=None,
         traceroute: bool = False,
+        stop_event: Event | None = None,
     ) -> ScanSession:
         session = ScanSession(target=target, ports=ports, dns_resolution=dns_resolution or resolve_target(target))
 
@@ -77,6 +79,9 @@ class PortScanner:
         completed = 0
         total = len(ports)
         for batch in self._chunk_ports(ports, self.batch_size):
+            if stop_event is not None and stop_event.is_set():
+                session.stopped = True
+                break
             with ThreadPoolExecutor(max_workers=min(self.max_workers, len(batch))) as executor:
                 futures = [executor.submit(self.scan_port, target, port) for port in batch]
                 for future in as_completed(futures):
@@ -85,6 +90,11 @@ class PortScanner:
                     completed += 1
                     if progress_callback is not None:
                         progress_callback(completed, total, result)
+                    if stop_event is not None and stop_event.is_set():
+                        session.stopped = True
+                        break
+                if session.stopped:
+                    break
 
         session.results.sort(key=lambda result: result.port)
         session.finished_at = datetime.now()
