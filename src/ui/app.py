@@ -8,8 +8,8 @@ from tkinter import filedialog, messagebox, ttk
 
 from src.reporting.pdf_report import PdfReportGenerator
 from src.scanner.port_scanner import PortScanner
-from src.scanner.target_parser import normalize_target, parse_ports
-from src.utils.formatters import build_summary_text, format_result_line
+from src.scanner.target_parser import normalize_target, parse_ports, resolve_target
+from src.utils.formatters import build_result_sections, build_summary_text, format_result_line
 
 
 class PortScannerApp:
@@ -21,7 +21,9 @@ class PortScannerApp:
         self.scanner = PortScanner()
         self.report_generator = PdfReportGenerator()
         self.latest_session = None
+        self.current_dns_resolution = None
         self.expected_results = 0
+        self.result_trees: dict[str, ttk.Treeview] = {}
 
         self._build_ui()
 
@@ -31,6 +33,7 @@ class PortScannerApp:
 
         form = ttk.Frame(container)
         form.pack(fill="x")
+        form.columnconfigure(1, weight=1)
 
         ttk.Label(form, text="Target").grid(row=0, column=0, sticky="w")
         self.target_var = tk.StringVar(value="127.0.0.1")
@@ -38,7 +41,17 @@ class PortScannerApp:
 
         ttk.Label(form, text="Ports").grid(row=0, column=1, sticky="w")
         self.ports_var = tk.StringVar(value="")
-        ttk.Entry(form, textvariable=self.ports_var, width=48).grid(row=1, column=1, pady=(4, 12), sticky="we")
+        ports_frame = ttk.Frame(form)
+        ports_frame.grid(row=1, column=1, pady=(4, 12), sticky="we")
+        ports_frame.columnconfigure(0, weight=1)
+        ttk.Entry(ports_frame, textvariable=self.ports_var).grid(row=0, column=0, sticky="we")
+
+        preset_button = tk.Menubutton(ports_frame, text="Presets", relief="raised")
+        preset_menu = tk.Menu(preset_button, tearoff=False)
+        preset_menu.add_command(label="Well-known ports", command=lambda: self._set_port_preset("wellknown"))
+        preset_menu.add_command(label="All ports", command=lambda: self._set_port_preset("all"))
+        preset_button.configure(menu=preset_menu)
+        preset_button.grid(row=0, column=1, padx=(8, 0))
 
         actions = ttk.Frame(container)
         actions.pack(fill="x", pady=(0, 12))
@@ -48,6 +61,9 @@ class PortScannerApp:
 
         self.demo_button = ttk.Button(actions, text="Quick Localhost Demo", command=self.quick_localhost_demo)
         self.demo_button.pack(side="left", padx=(8, 0))
+
+        self.traceroute_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(actions, text="Traceroute", variable=self.traceroute_var).pack(side="left", padx=(8, 0))
 
         self.export_button = ttk.Button(actions, text="Export PDF", command=self.export_pdf, state="disabled")
         self.export_button.pack(side="left", padx=(8, 0))
@@ -59,37 +75,44 @@ class PortScannerApp:
         self.progress_bar = ttk.Progressbar(container, maximum=100, variable=self.progress_var)
         self.progress_bar.pack(fill="x", pady=(0, 12))
 
-        self.summary_text = tk.Text(container, height=5, wrap="word")
+        self.summary_text = tk.Text(container, height=7, wrap="word")
         self.summary_text.pack(fill="x", pady=(0, 12))
         self.summary_text.insert("1.0", "No scan yet.")
         self.summary_text.configure(state="disabled")
 
-        table_frame = ttk.Frame(container)
-        table_frame.pack(fill="both", expand=True)
+        results_container = ttk.Frame(container)
+        results_container.pack(fill="both", expand=True)
 
-        columns = ("port", "status", "time", "banner", "error")
-        self.results_table = ttk.Treeview(table_frame, columns=columns, show="headings")
-        self.results_table.heading("port", text="Port")
-        self.results_table.heading("status", text="Status")
-        self.results_table.heading("time", text="Response Time")
-        self.results_table.heading("banner", text="Banner")
-        self.results_table.heading("error", text="Error")
+        self.results_notebook = ttk.Notebook(results_container)
+        self.results_notebook.pack(fill="both", expand=True)
 
-        self.results_table.column("port", width=70, anchor="center")
-        self.results_table.column("status", width=90, anchor="center")
-        self.results_table.column("time", width=110, anchor="center")
-        self.results_table.column("banner", width=330)
-        self.results_table.column("error", width=180)
+        open_tab = ttk.Frame(self.results_notebook)
+        banner_tab = ttk.Frame(self.results_notebook)
+        closed_tab = ttk.Frame(self.results_notebook)
+        self.results_notebook.add(open_tab, text="Open Ports")
+        self.results_notebook.add(banner_tab, text="Banner Ports")
+        self.results_notebook.add(closed_tab, text="Closed Ports")
 
-        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.results_table.yview)
-        self.results_table.configure(yscrollcommand=scrollbar.set)
-        self.results_table.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        self.result_trees["open"] = self._build_result_tree(
+            open_tab,
+            (("port", "Port", 80), ("time", "Response Time", 120), ("banner", "Banner", 520)),
+        )
+        self.result_trees["banner"] = self._build_result_tree(
+            banner_tab,
+            (("port", "Port", 80), ("time", "Response Time", 120), ("banner", "Banner", 520)),
+        )
+        self.result_trees["closed"] = self._build_result_tree(
+            closed_tab,
+            (("port", "Port", 80), ("time", "Response Time", 120), ("error", "Error", 520)),
+        )
 
     def quick_localhost_demo(self) -> None:
         self.target_var.set("127.0.0.1")
         self.ports_var.set("22,80,443,3389")
         self.start_scan()
+
+    def _set_port_preset(self, preset: str) -> None:
+        self.ports_var.set(preset)
 
     def start_scan(self) -> None:
         try:
@@ -110,12 +133,20 @@ class PortScannerApp:
         self.progress_bar.configure(maximum=max(1, self.expected_results))
         self.status_var.set("Scanning...")
         self._clear_results()
+        self.current_dns_resolution = resolve_target(target)
+        self._update_summary_preview(target)
 
         thread = threading.Thread(target=self._run_scan, args=(target, ports), daemon=True)
         thread.start()
 
     def _run_scan(self, target: str, ports: list[int]) -> None:
-        session = self.scanner.scan(target, ports, progress_callback=self._on_progress)
+        session = self.scanner.scan(
+            target,
+            ports,
+            progress_callback=self._on_progress,
+            dns_resolution=self.current_dns_resolution,
+            traceroute=self.traceroute_var.get(),
+        )
         self.latest_session = session
         self.root.after(0, lambda: self._show_session(session))
 
@@ -126,22 +157,14 @@ class PortScannerApp:
         self.progress_var.set(completed)
         state = "Open" if result.is_open else "Closed"
         self.status_var.set(f"Scanning... {completed}/{total} complete, last: port {result.port} {state}")
-        self.results_table.insert(
-            "",
-            "end",
-            values=(
-                result.port,
-                state,
-                f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
-                result.banner or "",
-                result.error or "",
-            ),
-        )
 
     def _show_session(self, session) -> None:
         self._update_summary(session)
         summary_line = build_summary_text(session)
-        self.status_var.set(f"Done - {len(session.open_ports)} open ports")
+        self._populate_results(session)
+        self.status_var.set(
+            f"Done - {len(session.open_ports)} open ports, {len(session.banner_ports)} banners, {len(session.closed_ports)} closed"
+        )
         self.scan_button.configure(state="normal")
         self.demo_button.configure(state="normal")
         self.export_button.configure(state="normal")
@@ -169,8 +192,66 @@ class PortScannerApp:
         messagebox.showinfo("Report created", f"PDF saved to {saved_path}")
 
     def _clear_results(self) -> None:
-        for item in self.results_table.get_children():
-            self.results_table.delete(item)
+        for tree in self.result_trees.values():
+            for item in tree.get_children():
+                tree.delete(item)
+
+    def _build_result_tree(
+        self,
+        parent: ttk.Frame,
+        columns: tuple[tuple[str, str, int], ...],
+    ) -> ttk.Treeview:
+        frame = ttk.Frame(parent)
+        frame.pack(fill="both", expand=True)
+
+        tree_columns = tuple(column[0] for column in columns)
+        tree = ttk.Treeview(frame, columns=tree_columns, show="headings")
+        for column_name, heading, width in columns:
+            tree.heading(column_name, text=heading)
+            tree.column(column_name, width=width, anchor="center" if column_name in {"port", "time"} else "w")
+
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        return tree
+
+    def _populate_results(self, session) -> None:
+        sections = build_result_sections(session)
+        self._clear_results()
+
+        for result in sections.open_ports:
+            self.result_trees["open"].insert(
+                "",
+                "end",
+                values=(
+                    result.port,
+                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    result.banner or "-",
+                ),
+            )
+
+        for result in sections.banner_ports:
+            self.result_trees["banner"].insert(
+                "",
+                "end",
+                values=(
+                    result.port,
+                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    result.banner or "-",
+                ),
+            )
+
+        for result in sections.closed_ports:
+            self.result_trees["closed"].insert(
+                "",
+                "end",
+                values=(
+                    result.port,
+                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    result.error or "-",
+                ),
+            )
 
     def _update_summary(self, session) -> None:
         text = build_summary_text(session)
@@ -178,3 +259,30 @@ class PortScannerApp:
         self.summary_text.delete("1.0", tk.END)
         self.summary_text.insert("1.0", text)
         self.summary_text.configure(state="disabled")
+
+    def _update_summary_preview(self, target: str) -> None:
+        dns = self.current_dns_resolution
+        lines = [f"Target: {target}", "Ports scanned: pending..."]
+        if dns is not None:
+            if dns.error:
+                lines.append(f"DNS lookup: failed ({dns.error})")
+            else:
+                lines.append(f"DNS lookup: {', '.join(dns.resolved_ips) if dns.resolved_ips else '-'}")
+            if dns.lookup_time_ms is not None:
+                lines.append(f"DNS time: {dns.lookup_time_ms:.2f} ms")
+        if self.traceroute_var.get():
+            lines.append("Traceroute: pending...")
+        self.summary_text.configure(state="normal")
+        self.summary_text.delete("1.0", tk.END)
+        self.summary_text.insert("1.0", "\n".join(lines))
+        self.summary_text.configure(state="disabled")
+
+    def _resolved_ips_text(self) -> str:
+        dns = self.current_dns_resolution
+        if dns is None:
+            return "-"
+        if dns.error:
+            return "DNS failed"
+        ipv4 = ", ".join(dns.ipv4_addresses) if dns.ipv4_addresses else "-"
+        ipv6 = ", ".join(dns.ipv6_addresses) if dns.ipv6_addresses else "-"
+        return f"IPv4 [{ipv4}] | IPv6 [{ipv6}]"
