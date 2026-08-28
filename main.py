@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import tkinter as tk
 
 from src.ui.app import PortScannerApp
@@ -9,15 +10,26 @@ from src.terminal.app import TerminalOptions, TerminalScannerApp
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Port Scanner")
+    command_line = sys.argv[1:]
+    if command_line and command_line[0].lower() == "target":
+        command_line = command_line[1:]
+
     parser.add_argument("target", nargs="?", help="Target host or IP address")
-    parser.add_argument("-p", "--ports", default="", help="Ports, presets, or ranges like 1-100 or all")
+    parser.add_argument(
+        "-p",
+        "--port",
+        "--ports",
+        dest="ports",
+        default="",
+        help="Ports, presets, or ranges like 1-100 or all",
+    )
     parser.add_argument("--terminal", action="store_true", help="Run in terminal mode")
     parser.add_argument("--tui", action="store_true", help="Run with a live terminal UI")
     parser.add_argument("--traceroute", action="store_true", help="Run traceroute before scanning")
     parser.add_argument("--timeout", type=float, default=0.8, help="Per-port timeout in seconds")
     parser.add_argument("--workers", type=int, default=10, help="Maximum parallel workers")
     parser.add_argument("--batch-size", type=int, default=10, help="Ports per batch")
-    return parser.parse_args()
+    return parser.parse_args(command_line)
 
 
 def main() -> None:
