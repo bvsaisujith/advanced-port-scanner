@@ -10,16 +10,28 @@ class ScanResultSections:
     open_ports: list[PortScanResult]
     banner_ports: list[PortScanResult]
     closed_ports: list[PortScanResult]
+    service_ports: list[PortScanResult]  # ports with detected service
+    vuln_ports: list[PortScanResult]  # ports with known CVEs
 
 
 def build_result_sections(session: ScanSession) -> ScanResultSections:
     open_ports = sorted(session.open_ports, key=lambda result: result.port)
     banner_ports = sorted(session.banner_ports, key=lambda result: result.port)
     closed_ports = sorted(session.closed_ports, key=lambda result: result.port)
+    service_ports = sorted(
+        [r for r in session.open_ports if r.service_name and r.service_name != "unknown"],
+        key=lambda result: result.port,
+    )
+    vuln_ports = sorted(
+        [r for r in session.open_ports if r.vulnerability_ids],
+        key=lambda result: result.port,
+    )
     return ScanResultSections(
         open_ports=open_ports,
         banner_ports=banner_ports,
         closed_ports=closed_ports,
+        service_ports=service_ports,
+        vuln_ports=vuln_ports,
     )
 
 
@@ -62,6 +74,8 @@ def build_summary_text(session: ScanSession) -> str:
         "Scan status: stopped early" if session.stopped else "Scan status: completed",
         f"Open ports: {len(sections.open_ports)}",
         f"Ports with banner: {len(sections.banner_ports)}",
+        f"Ports with service detection: {len(sections.service_ports)}",
+        f"Ports with vulnerabilities: {len(sections.vuln_ports)}",
         f"Closed ports: {len(sections.closed_ports)}",
     ]
     return "\n".join(lines)
@@ -70,3 +84,17 @@ def build_summary_text(session: ScanSession) -> str:
 def format_result_line(port: int, state: str, response_time_ms: float | None) -> str:
     response = f"{response_time_ms:.2f} ms" if response_time_ms is not None else "-"
     return f"Port {port:<5} {state:<6} {response}"
+
+
+def format_enhanced_result(
+    port: int,
+    service: str | None,
+    version: str | None,
+    risk: float | None,
+    vuln_count: int = 0,
+) -> str:
+    """Format enhanced result line for display."""
+    service_text = f"{service}:{version}" if service and version else service or "unknown"
+    risk_text = f"RISK:{risk:.1f}" if risk is not None else "RISK:-"
+    vuln_text = f"CVEs:{vuln_count}" if vuln_count > 0 else "CVEs:0"
+    return f"Port {port:<5} {service_text:<20} {risk_text:<8} {vuln_text:<8}"
