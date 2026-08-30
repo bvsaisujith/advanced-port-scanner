@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from PIL import Image, ImageTk
 
 from src.reporting.pdf_report import PdfReportGenerator
 from src.scanner.port_scanner import PortScanner
@@ -15,10 +16,10 @@ from src.utils.formatters import build_result_sections, build_summary_text, form
 class PortScannerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Port Scanner")
-        self.root.geometry("820x560")
+        self.root.title("PortXray - Advanced Port Scanner")
+        self.root.geometry("1000x750")
 
-        self.scanner = PortScanner()
+        self.scanner = None
         self.report_generator = PdfReportGenerator()
         self.latest_session = None
         self.current_dns_resolution = None
@@ -26,15 +27,84 @@ class PortScannerApp:
         self.result_trees: dict[str, ttk.Treeview] = {}
         self.scan_stop_event = threading.Event()
         self.scan_thread: threading.Thread | None = None
+        self.logo_image = None  # Keep reference to prevent garbage collection
+
+        # Configuration variables
+        self.scan_type_var = tk.StringVar(value="tcp_connect")
+        self.os_detection_var = tk.BooleanVar(value=False)
+        self.service_detection_var = tk.BooleanVar(value=True)
+        self.vulnerability_scan_var = tk.BooleanVar(value=False)
+        self.ai_enhancements_var = tk.BooleanVar(value=True)
 
         self._build_ui()
 
     def _build_ui(self) -> None:
-        container = ttk.Frame(self.root, padding=16)
+        # Configure style for better appearance
+        self.root.configure(bg="#f5f5f5")
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # Main container
+        main_container = tk.Frame(self.root, bg="#f5f5f5")
+        main_container.pack(fill="both", expand=True)
+
+        # ── Premium Header with Logo ──────────────────────────────────
+        header = tk.Frame(main_container, bg="white", height=120)
+        header.pack(fill="x", padx=0, pady=0)
+        header.pack_propagate(False)
+
+        # Inner header content with padding
+        header_content = tk.Frame(header, bg="white")
+        header_content.pack(fill="both", expand=True, padx=25, pady=15)
+
+        # Left side: Logo
+        logo_frame = tk.Frame(header_content, bg="white")
+        logo_frame.pack(side="left", anchor="center", padx=(0, 25))
+
+        logo_path = Path(r"C:\Users\ompra\Downloads\PortXray.png")
+        if logo_path.exists():
+            try:
+                logo_img = Image.open(logo_path)
+                logo_img = logo_img.resize((85, 85), Image.Resampling.LANCZOS)
+                self.logo_image = ImageTk.PhotoImage(logo_img)
+                logo_label = tk.Label(logo_frame, image=self.logo_image, bg="white")
+                logo_label.pack()
+            except Exception:
+                pass
+
+        # Right side: Title and Subtitle
+        title_frame = tk.Frame(header_content, bg="white")
+        title_frame.pack(side="left", fill="both", expand=True, anchor="center")
+
+        title_label = tk.Label(
+            title_frame,
+            text="PortXray",
+            font=("Segoe UI", 36, "bold"),
+            fg="#0052cc",
+            bg="white"
+        )
+        title_label.pack(anchor="w", pady=(8, 0))
+
+        subtitle_label = tk.Label(
+            title_frame,
+            text="Advanced Port Scanner & Network Analysis",
+            font=("Segoe UI", 10),
+            fg="#666666",
+            bg="white"
+        )
+        subtitle_label.pack(anchor="w", pady=(4, 0))
+
+        # Divider line
+        divider = tk.Frame(main_container, bg="#e0e0e0", height=1)
+        divider.pack(fill="x", padx=0, pady=0)
+
+        # Scrollable content area
+        container = ttk.Frame(main_container, padding=20)
         container.pack(fill="both", expand=True)
 
+        # ── Target & Port Input ───────────────────────────────────────
         form = ttk.Frame(container)
-        form.pack(fill="x")
+        form.pack(fill="x", pady=(0, 12))
         form.columnconfigure(1, weight=1)
 
         ttk.Label(form, text="Target").grid(row=0, column=0, sticky="w")
@@ -55,6 +125,27 @@ class PortScannerApp:
         preset_button.configure(menu=preset_menu)
         preset_button.grid(row=0, column=1, padx=(8, 0))
 
+        # ── Scan Type Selection ──────────────────────────────────────
+        scan_frame = ttk.LabelFrame(container, text="Scan Type", padding=8)
+        scan_frame.pack(fill="x", pady=(0, 12))
+
+        ttk.Radiobutton(scan_frame, text="TCP Connect", variable=self.scan_type_var, value="tcp_connect").pack(side="left", padx=5)
+        ttk.Radiobutton(scan_frame, text="SYN Stealth", variable=self.scan_type_var, value="syn_stealth").pack(side="left", padx=5)
+        ttk.Radiobutton(scan_frame, text="UDP", variable=self.scan_type_var, value="udp").pack(side="left", padx=5)
+        ttk.Radiobutton(scan_frame, text="FIN", variable=self.scan_type_var, value="fin").pack(side="left", padx=5)
+        ttk.Radiobutton(scan_frame, text="NULL", variable=self.scan_type_var, value="null").pack(side="left", padx=5)
+        ttk.Radiobutton(scan_frame, text="XMAS", variable=self.scan_type_var, value="xmas").pack(side="left", padx=5)
+
+        # ── Enhancement Options ──────────────────────────────────────
+        enhance_frame = ttk.LabelFrame(container, text="Enhancements", padding=8)
+        enhance_frame.pack(fill="x", pady=(0, 12))
+
+        ttk.Checkbutton(enhance_frame, text="OS Detection", variable=self.os_detection_var).pack(side="left", padx=5)
+        ttk.Checkbutton(enhance_frame, text="Service Detection", variable=self.service_detection_var).pack(side="left", padx=5)
+        ttk.Checkbutton(enhance_frame, text="Vulnerability Scan", variable=self.vulnerability_scan_var).pack(side="left", padx=5)
+        ttk.Checkbutton(enhance_frame, text="AI Enhancements", variable=self.ai_enhancements_var).pack(side="left", padx=5)
+
+        # ── Action Buttons ───────────────────────────────────────────
         actions = ttk.Frame(container)
         actions.pack(fill="x", pady=(0, 12))
 
@@ -64,7 +155,7 @@ class PortScannerApp:
         self.stop_button = ttk.Button(actions, text="Stop Scan", command=self.stop_scan, state="disabled")
         self.stop_button.pack(side="left", padx=(8, 0))
 
-        self.demo_button = ttk.Button(actions, text="Quick Localhost Demo", command=self.quick_localhost_demo)
+        self.demo_button = ttk.Button(actions, text="Quick Demo", command=self.quick_localhost_demo)
         self.demo_button.pack(side="left", padx=(8, 0))
 
         self.traceroute_var = tk.BooleanVar(value=True)
@@ -76,15 +167,18 @@ class PortScannerApp:
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(actions, textvariable=self.status_var).pack(side="right")
 
+        # ── Progress Bar ─────────────────────────────────────────────
         self.progress_var = tk.DoubleVar(value=0)
         self.progress_bar = ttk.Progressbar(container, maximum=100, variable=self.progress_var)
         self.progress_bar.pack(fill="x", pady=(0, 12))
 
-        self.summary_text = tk.Text(container, height=7, wrap="word")
+        # ── Summary ──────────────────────────────────────────────────
+        self.summary_text = tk.Text(container, height=6, wrap="word")
         self.summary_text.pack(fill="x", pady=(0, 12))
         self.summary_text.insert("1.0", "No scan yet.")
         self.summary_text.configure(state="disabled")
 
+        # ── Results Tabs ─────────────────────────────────────────────
         results_container = ttk.Frame(container)
         results_container.pack(fill="both", expand=True)
 
@@ -92,23 +186,42 @@ class PortScannerApp:
         self.results_notebook.pack(fill="both", expand=True)
 
         open_tab = ttk.Frame(self.results_notebook)
+        os_tab = ttk.Frame(self.results_notebook)
+        service_tab = ttk.Frame(self.results_notebook)
+        vuln_tab = ttk.Frame(self.results_notebook)
         banner_tab = ttk.Frame(self.results_notebook)
         closed_tab = ttk.Frame(self.results_notebook)
+
         self.results_notebook.add(open_tab, text="Open Ports")
-        self.results_notebook.add(banner_tab, text="Banner Ports")
+        self.results_notebook.add(os_tab, text="OS Detection")
+        self.results_notebook.add(service_tab, text="Services")
+        self.results_notebook.add(vuln_tab, text="Vulnerabilities")
+        self.results_notebook.add(banner_tab, text="Banners")
         self.results_notebook.add(closed_tab, text="Closed Ports")
 
         self.result_trees["open"] = self._build_result_tree(
             open_tab,
-            (("port", "Port", 80), ("time", "Response Time", 120), ("banner", "Banner", 520)),
+            (("port", "Port", 60), ("time", "Time (ms)", 100), ("service", "Service", 150), ("risk", "Risk", 60), ("banner", "Banner", 300)),
+        )
+        self.result_trees["os"] = self._build_result_tree(
+            os_tab,
+            (("target", "Target", 200), ("os", "OS Guess", 250), ("confidence", "Confidence", 100), ("method", "Method", 150)),
+        )
+        self.result_trees["service"] = self._build_result_tree(
+            service_tab,
+            (("port", "Port", 60), ("service", "Service", 120), ("version", "Version", 200), ("risk", "Risk", 80), ("cves", "CVEs", 60)),
+        )
+        self.result_trees["vuln"] = self._build_result_tree(
+            vuln_tab,
+            (("port", "Port", 60), ("service", "Service", 120), ("cvelist", "CVE IDs", 300), ("risk", "Risk", 80)),
         )
         self.result_trees["banner"] = self._build_result_tree(
             banner_tab,
-            (("port", "Port", 80), ("time", "Response Time", 120), ("banner", "Banner", 520)),
+            (("port", "Port", 80), ("time", "Time (ms)", 100), ("banner", "Banner", 500)),
         )
         self.result_trees["closed"] = self._build_result_tree(
             closed_tab,
-            (("port", "Port", 80), ("time", "Response Time", 120), ("error", "Error", 520)),
+            (("port", "Port", 80), ("time", "Time (ms)", 100), ("error", "Error", 500)),
         )
 
     def quick_localhost_demo(self) -> None:
@@ -154,6 +267,13 @@ class PortScannerApp:
         self.status_var.set("Stopping scan...")
 
     def _run_scan(self, target: str, ports: list[int]) -> None:
+        self.scanner = PortScanner(
+            scan_type=self.scan_type_var.get(),
+            os_detection=self.os_detection_var.get(),
+            service_detection=self.service_detection_var.get(),
+            vulnerability_scan=self.vulnerability_scan_var.get(),
+            ai_enhancements=self.ai_enhancements_var.get(),
+        )
         session = self.scanner.scan(
             target,
             ports,
@@ -175,14 +295,14 @@ class PortScannerApp:
 
     def _show_session(self, session) -> None:
         self._update_summary(session)
-        summary_line = build_summary_text(session)
         self._populate_results(session)
         if session.stopped:
             status_text = "Stopped"
         else:
             status_text = "Done"
+        sections = build_result_sections(session)
         self.status_var.set(
-            f"{status_text} - {len(session.open_ports)} open ports, {len(session.banner_ports)} banners, {len(session.closed_ports)} closed"
+            f"{status_text} - {len(session.open_ports)} open, {len(sections.service_ports)} services, {len(sections.vuln_ports)} vulns"
         )
         self.scan_button.configure(state="normal")
         self.stop_button.configure(state="disabled")
@@ -190,9 +310,6 @@ class PortScannerApp:
         self.export_button.configure(state="normal")
         self.scan_thread = None
         self.progress_var.set(self.expected_results)
-        print(summary_line)
-        for result in session.results:
-            print(format_result_line(result.port, "Open" if result.is_open else "Closed", result.response_time_ms))
 
     def export_pdf(self) -> None:
         if self.latest_session is None:
@@ -241,35 +358,83 @@ class PortScannerApp:
         sections = build_result_sections(session)
         self._clear_results()
 
+        # Open ports tab
         for result in sections.open_ports:
             self.result_trees["open"].insert(
                 "",
                 "end",
                 values=(
                     result.port,
-                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    f"{result.response_time_ms:.2f}" if result.response_time_ms else "-",
+                    result.service_name or "-",
+                    f"{result.risk_score}" if result.risk_score else "-",
                     result.banner or "-",
                 ),
             )
 
+        # Services tab
+        for result in sections.service_ports:
+            self.result_trees["service"].insert(
+                "",
+                "end",
+                values=(
+                    result.port,
+                    result.service_name or "-",
+                    result.service_version or "-",
+                    f"{result.risk_score}" if result.risk_score else "-",
+                    len(result.vulnerability_ids) if result.vulnerability_ids else 0,
+                ),
+            )
+
+        # OS Detection tab
+        if session.os_detection:
+            os_result = session.os_detection
+            method = ", ".join(os_result.fingerprints.keys()) if os_result.fingerprints else "passive"
+            self.result_trees["os"].insert(
+                "",
+                "end",
+                values=(
+                    os_result.target,
+                    os_result.os_guess,
+                    f"{os_result.confidence:.0%}" if os_result.confidence else "-",
+                    method,
+                ),
+            )
+
+        # Vulnerabilities tab
+        for result in sections.vuln_ports:
+            cves = ", ".join(result.vulnerability_ids) if result.vulnerability_ids else "-"
+            self.result_trees["vuln"].insert(
+                "",
+                "end",
+                values=(
+                    result.port,
+                    result.service_name or "-",
+                    cves,
+                    f"{result.risk_score}" if result.risk_score else "-",
+                ),
+            )
+
+        # Banners tab
         for result in sections.banner_ports:
             self.result_trees["banner"].insert(
                 "",
                 "end",
                 values=(
                     result.port,
-                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    f"{result.response_time_ms:.2f}" if result.response_time_ms else "-",
                     result.banner or "-",
                 ),
             )
 
+        # Closed ports tab
         for result in sections.closed_ports:
             self.result_trees["closed"].insert(
                 "",
                 "end",
                 values=(
                     result.port,
-                    f"{result.response_time_ms:.2f} ms" if result.response_time_ms is not None else "-",
+                    f"{result.response_time_ms:.2f}" if result.response_time_ms else "-",
                     result.error or "-",
                 ),
             )
@@ -297,13 +462,3 @@ class PortScannerApp:
         self.summary_text.delete("1.0", tk.END)
         self.summary_text.insert("1.0", "\n".join(lines))
         self.summary_text.configure(state="disabled")
-
-    def _resolved_ips_text(self) -> str:
-        dns = self.current_dns_resolution
-        if dns is None:
-            return "-"
-        if dns.error:
-            return "DNS failed"
-        ipv4 = ", ".join(dns.ipv4_addresses) if dns.ipv4_addresses else "-"
-        ipv6 = ", ".join(dns.ipv6_addresses) if dns.ipv6_addresses else "-"
-        return f"IPv4 [{ipv4}] | IPv6 [{ipv6}]"
