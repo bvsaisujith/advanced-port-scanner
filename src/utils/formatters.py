@@ -78,6 +78,14 @@ def build_summary_text(session: ScanSession) -> str:
         f"Ports with vulnerabilities: {len(sections.vuln_ports)}",
         f"Closed ports: {len(sections.closed_ports)}",
     ]
+
+    # OS detection info
+    if session.os_detection:
+        os_line = f"OS Detection: {session.os_detection.os_guess}"
+        if session.os_detection.confidence:
+            os_line += f" ({session.os_detection.confidence:.0%} confidence)"
+        lines.append(os_line)
+
     return "\n".join(lines)
 
 

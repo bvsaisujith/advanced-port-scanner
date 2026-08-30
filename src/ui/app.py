@@ -124,12 +124,14 @@ class PortScannerApp:
         self.results_notebook.pack(fill="both", expand=True)
 
         open_tab = ttk.Frame(self.results_notebook)
+        os_tab = ttk.Frame(self.results_notebook)
         service_tab = ttk.Frame(self.results_notebook)
         vuln_tab = ttk.Frame(self.results_notebook)
         banner_tab = ttk.Frame(self.results_notebook)
         closed_tab = ttk.Frame(self.results_notebook)
 
         self.results_notebook.add(open_tab, text="Open Ports")
+        self.results_notebook.add(os_tab, text="OS Detection")
         self.results_notebook.add(service_tab, text="Services")
         self.results_notebook.add(vuln_tab, text="Vulnerabilities")
         self.results_notebook.add(banner_tab, text="Banners")
@@ -138,6 +140,10 @@ class PortScannerApp:
         self.result_trees["open"] = self._build_result_tree(
             open_tab,
             (("port", "Port", 60), ("time", "Time (ms)", 100), ("service", "Service", 150), ("risk", "Risk", 60), ("banner", "Banner", 300)),
+        )
+        self.result_trees["os"] = self._build_result_tree(
+            os_tab,
+            (("target", "Target", 200), ("os", "OS Guess", 250), ("confidence", "Confidence", 100), ("method", "Method", 150)),
         )
         self.result_trees["service"] = self._build_result_tree(
             service_tab,
@@ -315,6 +321,21 @@ class PortScannerApp:
                     result.service_version or "-",
                     f"{result.risk_score}" if result.risk_score else "-",
                     len(result.vulnerability_ids) if result.vulnerability_ids else 0,
+                ),
+            )
+
+        # OS Detection tab
+        if session.os_detection:
+            os_result = session.os_detection
+            method = ", ".join(os_result.fingerprints.keys()) if os_result.fingerprints else "passive"
+            self.result_trees["os"].insert(
+                "",
+                "end",
+                values=(
+                    os_result.target,
+                    os_result.os_guess,
+                    f"{os_result.confidence:.0%}" if os_result.confidence else "-",
+                    method,
                 ),
             )
 

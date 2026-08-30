@@ -39,6 +39,13 @@ class PdfReportGenerator:
             f"Started: {started}",
             f"Finished: {finished}",
         ]
+
+        # OS detection info
+        if session.os_detection:
+            os_line = f"OS Detection: {session.os_detection.os_guess}"
+            if session.os_detection.confidence:
+                os_line += f" ({session.os_detection.confidence:.0%} confidence)"
+            meta_lines.append(os_line)
         for line in meta_lines:
             pdf.drawString(40, y_position, line)
             y_position -= 14
