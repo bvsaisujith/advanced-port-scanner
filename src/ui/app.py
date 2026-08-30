@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from PIL import Image, ImageTk
 
 from src.reporting.pdf_report import PdfReportGenerator
 from src.scanner.port_scanner import PortScanner
@@ -15,8 +16,8 @@ from src.utils.formatters import build_result_sections, build_summary_text, form
 class PortScannerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
-        self.root.title("Advanced Port Scanner")
-        self.root.geometry("1000x700")
+        self.root.title("PortXray - Advanced Port Scanner")
+        self.root.geometry("1000x750")
 
         self.scanner = None
         self.report_generator = PdfReportGenerator()
@@ -26,6 +27,7 @@ class PortScannerApp:
         self.result_trees: dict[str, ttk.Treeview] = {}
         self.scan_stop_event = threading.Event()
         self.scan_thread: threading.Thread | None = None
+        self.logo_image = None  # Keep reference to prevent garbage collection
 
         # Configuration variables
         self.scan_type_var = tk.StringVar(value="tcp_connect")
@@ -37,7 +39,67 @@ class PortScannerApp:
         self._build_ui()
 
     def _build_ui(self) -> None:
-        container = ttk.Frame(self.root, padding=16)
+        # Configure style for better appearance
+        self.root.configure(bg="#f5f5f5")
+        style = ttk.Style()
+        style.theme_use('clam')
+
+        # Main container
+        main_container = tk.Frame(self.root, bg="#f5f5f5")
+        main_container.pack(fill="both", expand=True)
+
+        # ── Premium Header with Logo ──────────────────────────────────
+        header = tk.Frame(main_container, bg="white", height=120)
+        header.pack(fill="x", padx=0, pady=0)
+        header.pack_propagate(False)
+
+        # Inner header content with padding
+        header_content = tk.Frame(header, bg="white")
+        header_content.pack(fill="both", expand=True, padx=25, pady=15)
+
+        # Left side: Logo
+        logo_frame = tk.Frame(header_content, bg="white")
+        logo_frame.pack(side="left", anchor="center", padx=(0, 25))
+
+        logo_path = Path(r"C:\Users\ompra\Downloads\PortXray.png")
+        if logo_path.exists():
+            try:
+                logo_img = Image.open(logo_path)
+                logo_img = logo_img.resize((85, 85), Image.Resampling.LANCZOS)
+                self.logo_image = ImageTk.PhotoImage(logo_img)
+                logo_label = tk.Label(logo_frame, image=self.logo_image, bg="white")
+                logo_label.pack()
+            except Exception:
+                pass
+
+        # Right side: Title and Subtitle
+        title_frame = tk.Frame(header_content, bg="white")
+        title_frame.pack(side="left", fill="both", expand=True, anchor="center")
+
+        title_label = tk.Label(
+            title_frame,
+            text="PortXray",
+            font=("Segoe UI", 36, "bold"),
+            fg="#0052cc",
+            bg="white"
+        )
+        title_label.pack(anchor="w", pady=(8, 0))
+
+        subtitle_label = tk.Label(
+            title_frame,
+            text="Advanced Port Scanner & Network Analysis",
+            font=("Segoe UI", 10),
+            fg="#666666",
+            bg="white"
+        )
+        subtitle_label.pack(anchor="w", pady=(4, 0))
+
+        # Divider line
+        divider = tk.Frame(main_container, bg="#e0e0e0", height=1)
+        divider.pack(fill="x", padx=0, pady=0)
+
+        # Scrollable content area
+        container = ttk.Frame(main_container, padding=20)
         container.pack(fill="both", expand=True)
 
         # ── Target & Port Input ───────────────────────────────────────
